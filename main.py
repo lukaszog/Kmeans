@@ -5,6 +5,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 import random
 import math
+import numpy as np
 import matplotlib.pyplot as plt
 import csv
 from matplotlib.figure import Figure
@@ -17,13 +18,19 @@ class KMeans(Gtk.Window):
         Gtk.Window.__init__(self)
         self.set_title("KMeans")
         self.connect('destroy', Gtk.main_quit)
-        self.box = Gtk.VBox()
+        self.main_view = Gtk.HBox()
+        self.plot_view = Gtk.VBox()
+        self.box = Gtk.VBox(homogeneous=False, spacing=0)
         self.filew = ""
         button1 = Gtk.Button("Wybierz plik")
         button1.connect("clicked", self.on_file_clicked)
         self.box.add(button1)
 
-        self.cluster_label = Gtk.Label("Liczba skupien")
+        reset_button = Gtk.Button("Resetuj")
+        reset_button.connect("clicked", self.reset)
+        self.box.add(reset_button)
+
+        self.cluster_label = Gtk.Label("Liczba skupien:")
         self.box.add(self.cluster_label)
 
         adjustment = Gtk.Adjustment(1, 1, 20, 1, 1, 0)
@@ -35,6 +42,8 @@ class KMeans(Gtk.Window):
         self.h_scale.connect("value-changed", self.scale_moved)
         self.box.add(self.h_scale)
 
+        metric_label = Gtk.Label("Wybierz rodzaj metryki:")
+
         name_store = Gtk.ListStore(int, str)
         name_store.append([1, "Euklidesowa"])
         name_store.append([2, "Miejska"])
@@ -42,22 +51,76 @@ class KMeans(Gtk.Window):
         name_combo.connect("changed", self.on_name_combo_changed)
         name_combo.set_entry_text_column(1)
 
+        self.box.add(metric_label)
         self.box.add(name_combo)
+        self.centroid_button = Gtk.Button("Wybierz centroidy")
+        self.centroid_button.set_sensitive(False)
+        self.centroid_button.connect("clicked", self.run_kmeans)
 
+        self.group_button = Gtk.Button("Grupuj")
+        self.group_button.set_sensitive(False)
+        self.group_button.connect("clicked", self.group)
+
+
+        self.scale_plot = Gtk.Button("Skaluj")
+        self.scale_plot.set_sensitive(False)
+        self.scale_plot.connect("clicked", self.scaled)
+
+
+        self.box.add(self.centroid_button)
+        self.box.add(self.group_button)
+        self.box.add(self.scale_plot)
         self.data = ""
         self.cluster_count = ""
         self.metric_id = ""
         self.filename = ""
-        f = Figure(figsize=(5, 4), dpi=100)
-        a = f.add_subplot(111)
-        t = arange(0.0, 3.0, 0.01)
-        s = sin(2 * pi * t)
-        a.plot(t, s)
-        canvas = FigureCanvas(f)
-        self.box.add(canvas)
-        self.add(self.box)
+        self.plot_area = ""
+        self.cluster = ""
+        self.color_random = ""
+        self.figure = ""
+        self.cluster_centers = ""
+        self.plot_canvas = ""
+        self.main_data_canvas = ""
+
+        self.main_view.add(self.box)
+        self.main_view.add(self.plot_view)
+        self.add(self.main_view)
+        self.couting = 0
 
         self.show_all()
+
+    def scaled(self, event):
+        plt.scatter(*zip(*self.data), c=self.color_random[self.cluster])
+        plt.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+        plt.show()
+
+    def reset(self, evetn):
+       self.plot_view.remove(self.plot_canvas)
+
+    def run_kmeans(self, event):
+        self.kmeans(self.cluster_count, self.data)
+
+    def group(self, event):
+        self.couting += 1
+
+        if self.couting % 2 == 0:
+            print "Parzysta"
+            self.kmeans(self.cluster_count, self.data)
+            # self.plot_area.scatter(*zip(*self.data))
+            self.plot_area.clear()
+            self.plot_area.scatter(*zip(*self.data))
+            self.plot_area.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_canvas.draw()
+            self.plot_view.show_all()
+
+        else:
+            print "Nieparzysta"
+
+            self.plot_area.scatter(*zip(*self.data), c=self.color_random[self.cluster])
+            self.plot_area.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_canvas.draw()
+            self.plot_view.show_all()
+
 
     def on_name_combo_changed(self, combo):
         tree_iter = combo.get_active_iter()
@@ -65,6 +128,8 @@ class KMeans(Gtk.Window):
             model = combo.get_model()
             row_id, name = model[tree_iter][:2]
             self.metric_id = row_id
+            # 1 euklidesowa
+            # 2 miejsca
             print("Selected: ID=%d, name=%s" % (row_id, name))
         else:
             entry = combo.get_child()
@@ -79,8 +144,6 @@ class KMeans(Gtk.Window):
                                        Gtk.FileChooserAction.OPEN,
                                        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
                                         Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
-
-
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
             print("Open clicked")
@@ -92,14 +155,24 @@ class KMeans(Gtk.Window):
         elif response == Gtk.ResponseType.CANCEL:
             print("Cancel clicked")
 
-
-
     def openfile(self, filename):
 
         with open(filename) as csvfile:
             self.data = [(float(x), float(y)) for x, y in csv.reader(csvfile, delimiter=",")]
 
-        self.box.add(plt.scatter(*zip(*self.data)))
+        self.load_data_from_file()
+
+    def load_data_from_file(self):
+        self.centroid_button.set_sensitive(True)
+        self.group_button.set_sensitive(True)
+        self.scale_plot.set_sensitive(True)
+        f = Figure(figsize=(5, 4), dpi=100)
+        a = f.add_subplot(111)
+        a.scatter(*zip(*self.data))
+        self.main_data_canvas = FigureCanvas(f)
+        self.plot_view.add(self.main_data_canvas)
+        self.plot_view.show_all()
+        self.resize(1000,400)
 
     def euclides_distance(self, p1, p2):
         dist = 0.0
@@ -107,8 +180,13 @@ class KMeans(Gtk.Window):
             dist += (p1[i] - p2[i]) ** 2
         return math.sqrt(dist)
 
-    def kmeans(self, k="k", data="data"):
+    def manhattan_distance(self, x, y):
+
+        return sum(abs(a - b) for a, b in zip(x, y))
+
+    def kmeans(self, k, data):
         colors = ['r', 'g', 'b']
+        self.color_random = np.arange(k)
 
         # wymiar danych
         dim = len(data[0])
@@ -121,7 +199,7 @@ class KMeans(Gtk.Window):
         i = 0
         max_iter = 1000
         cluster_centers = []
-        for i in xrange(0, k):
+        for i in xrange(0, int(k)):
             cluster_centers += [random.choice(data)]
 
         while (cluster != prev_cluster) or i > max_iter:
@@ -133,15 +211,15 @@ class KMeans(Gtk.Window):
 
                 # sprawdzenie minimalnego dystansu miedzy srodkami
                 for y in xrange(0, len(cluster_centers)):
+                    distance = ""
+                    if self.metric_id == 2:
+                        distance = self.manhattan_distance(data[x], cluster_centers[y])
+                    else:
+                        distance = self.euclides_distance(data[x], cluster_centers[y])
 
-                    distance = self.euclides_distance(data[x], cluster_centers[y])
                     if distance < min_dist:
                         min_dist = distance
                         cluster[x] = y
-
-                        # print "Dystans miedzy x1 {} y1 {} x2 {} y2 {} wynosi {}  ".format(data[x][0], data[x][1], data[y][0], data[y][1], distance)
-                        # polaczenie punktow
-                        # plt.plot(*zip(data[x], cluster_centers[y]), linestyle='--')
 
             # aktualizacja srodkow
             for k in xrange(0, len(cluster_centers)):
@@ -160,14 +238,20 @@ class KMeans(Gtk.Window):
 
                 cluster_centers[k] = new_center
 
-        print "======== Results ========"
-        print "Clusters", cluster_centers
-        print "Iterations", i
-        print "Assignments", cluster
+        self.cluster_centers = cluster_centers
+        self.cluster = cluster
 
-        plt.scatter(*zip(*data))
-        plt.scatter(*zip(*cluster_centers), s=1000, c=colors, marker='v')
-        plt.show()
+        if self.couting == 0:
+            self.figure = Figure(figsize=(5, 4), dpi=100)
+            self.plot_area = self.figure.add_subplot(111)
+            print type(self.plot_area)
+            self.plot_area.scatter(*zip(*data))
+            self.plot_area.scatter(*zip(*cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_canvas = FigureCanvas(self.figure)
+            self.plot_view.add(self.plot_canvas)
+            self.plot_view.show_all()
+
+
 
 
 if __name__ == "__main__":
