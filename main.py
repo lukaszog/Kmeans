@@ -16,7 +16,7 @@ from numpy import arange, sin, pi
 class KMeans(Gtk.Window):
     def __init__(self):
         Gtk.Window.__init__(self)
-        self.set_title("KMeans")
+        self.set_title("k srednich")
         self.connect('destroy', Gtk.main_quit)
         self.main_view = Gtk.HBox()
         self.plot_view = Gtk.VBox()
@@ -78,7 +78,7 @@ class KMeans(Gtk.Window):
         self.cluster = ""
         self.color_random = ""
         self.figure = ""
-        self.cluster_centers = ""
+        self.cluster_centers = []
         self.plot_canvas = ""
         self.main_data_canvas = ""
 
@@ -86,16 +86,14 @@ class KMeans(Gtk.Window):
         self.main_view.add(self.plot_view)
         self.add(self.main_view)
         self.couting = 0
+        self.is_random_center = 0
 
         self.show_all()
 
     def scaled(self, event):
         plt.scatter(*zip(*self.data), c=self.color_random[self.cluster])
-        plt.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+        plt.scatter(*zip(*self.cluster_centers), s=500, c=self.color_random, marker='v')
         plt.show()
-
-    def reset(self, evetn):
-       self.plot_view.remove(self.plot_canvas)
 
     def run_kmeans(self, event):
         self.kmeans(self.cluster_count, self.data)
@@ -109,7 +107,7 @@ class KMeans(Gtk.Window):
             # self.plot_area.scatter(*zip(*self.data))
             self.plot_area.clear()
             self.plot_area.scatter(*zip(*self.data))
-            self.plot_area.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_area.scatter(*zip(*self.cluster_centers), s=500, c=self.color_random, marker='v')
             self.plot_canvas.draw()
             self.plot_view.show_all()
 
@@ -117,7 +115,7 @@ class KMeans(Gtk.Window):
             print "Nieparzysta"
 
             self.plot_area.scatter(*zip(*self.data), c=self.color_random[self.cluster])
-            self.plot_area.scatter(*zip(*self.cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_area.scatter(*zip(*self.cluster_centers), s=500, c=self.color_random, marker='v')
             self.plot_canvas.draw()
             self.plot_view.show_all()
 
@@ -166,6 +164,7 @@ class KMeans(Gtk.Window):
         self.centroid_button.set_sensitive(True)
         self.group_button.set_sensitive(True)
         self.scale_plot.set_sensitive(True)
+
         f = Figure(figsize=(5, 4), dpi=100)
         a = f.add_subplot(111)
         a.scatter(*zip(*self.data))
@@ -185,7 +184,6 @@ class KMeans(Gtk.Window):
         return sum(abs(a - b) for a, b in zip(x, y))
 
     def kmeans(self, k, data):
-        colors = ['r', 'g', 'b']
         self.color_random = np.arange(k)
 
         # wymiar danych
@@ -198,60 +196,74 @@ class KMeans(Gtk.Window):
 
         i = 0
         max_iter = 1000
-        cluster_centers = []
-        for i in xrange(0, int(k)):
-            cluster_centers += [random.choice(data)]
 
-        while (cluster != prev_cluster) or i > max_iter:
-            prev_cluster = list(cluster)
-            i += 1
+        if self.is_random_center == 0:
+            for i in xrange(0, int(k)):
+                self.cluster_centers += [random.choice(data)]
 
-            for x in xrange(0, len(data)):
-                min_dist = float("inf")
+            self.is_random_center = 1
 
-                # sprawdzenie minimalnego dystansu miedzy srodkami
-                for y in xrange(0, len(cluster_centers)):
-                    distance = ""
-                    if self.metric_id == 2:
-                        distance = self.manhattan_distance(data[x], cluster_centers[y])
-                    else:
-                        distance = self.euclides_distance(data[x], cluster_centers[y])
+        # while (cluster != prev_cluster) or i > max_iter:
+        prev_cluster = list(cluster)
+        i += 1
+        print "Iteracja numer"
+        # print "Cluster {}".format(cluster)
 
-                    if distance < min_dist:
-                        min_dist = distance
-                        cluster[x] = y
+        for x in xrange(0, len(data)):
+            min_dist = float("inf")
 
-            # aktualizacja srodkow
-            for k in xrange(0, len(cluster_centers)):
-                new_center = dim * [0]
-                members = 0
-                for p in xrange(0, len(data)):
-                    if cluster[p] == k:  # ten punkt nalezy do klastra
-                        for j in xrange(0, dim):
-                            new_center[j] += data[p][j]
-                            print "Nowy srodek {}".format(new_center[j])
-                        members += 1
+            # sprawdzenie minimalnego dystansu miedzy srodkami
+            for y in xrange(0, len(self.cluster_centers)):
+                distance = ""
+                if self.metric_id == 2:
+                    distance = self.manhattan_distance(data[x], self.cluster_centers[y])
+                else:
+                    distance = self.euclides_distance(data[x], self.cluster_centers[y])
 
-                for j in xrange(0, dim):
-                    if members != 0:
-                        new_center[j] = new_center[j] / float(members)
+                if distance < min_dist:
+                    min_dist = distance
+                    cluster[x] = y
 
-                cluster_centers[k] = new_center
+        # aktualizacja srodkow
+        for k in xrange(0, len(self.cluster_centers)):
+            new_center = dim * [0]
+            members = 0
+            for p in xrange(0, len(data)):
+                if cluster[p] == k:  # ten punkt nalezy do klastra
+                    for j in xrange(0, dim):
+                        new_center[j] += data[p][j]
+                        # print "Nowy srodek {}".format(new_center[j])
+                    members += 1
 
-        self.cluster_centers = cluster_centers
+            for j in xrange(0, dim):
+                if members != 0:
+                    new_center[j] = new_center[j] / float(members)
+
+            self.cluster_centers[k] = new_center
+
+        print self.cluster_centers
+
         self.cluster = cluster
 
         if self.couting == 0:
+            print "Rysuje"
             self.figure = Figure(figsize=(5, 4), dpi=100)
             self.plot_area = self.figure.add_subplot(111)
-            print type(self.plot_area)
             self.plot_area.scatter(*zip(*data))
-            self.plot_area.scatter(*zip(*cluster_centers), s=1000, c=self.color_random, marker='v')
+            self.plot_area.scatter(*zip(*self.cluster_centers), s=500, c=self.color_random, marker='v')
             self.plot_canvas = FigureCanvas(self.figure)
+            self.plot_canvas.draw()
+            self.plot_canvas.show_all()
             self.plot_view.add(self.plot_canvas)
+            self.plot_view.show()
             self.plot_view.show_all()
 
-
+    def reset(self, event):
+        self.plot_view.remove(self.plot_canvas)
+        self.plot_view = Gtk.VBox()
+        self.plot_view.show_all()
+        self.couting = 0
+        self.is_random_center = 0
 
 
 if __name__ == "__main__":
